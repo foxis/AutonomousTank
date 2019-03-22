@@ -1,0 +1,24 @@
+{
+    "args": [
+        {
+            "args": [0],
+            "class": "VideoCapture",
+            "objects": {},
+            "kwargs": {"width":  640, "height":  480}
+        },
+        {
+            "args": [],
+            "class": "MultiThreading",
+            "objects": {},
+            "kwargs": {}
+        },
+        {
+            "args": [],
+            "class": "CalibratedCamera",
+            "objects": {},
+            "kwargs": {"camera": null, "enabled": true}
+        }
+    ],
+    "objects": {},
+    "kwargs": {}
+}
