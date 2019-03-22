@@ -1,0 +1,11 @@
+#!/bin/bash
+
+EV=/home/pi/EasyVision/
+RB=/home/pi/AutonomousTank/
+
+cd $EV && git pull && cd $RB && git pull
+
+ssh pi@ExtractorLeft "cd $EV && git pull && cd $RB && git pull"
+ssh pi@ExtractorRight "cd $EV && git pull && cd $RB && git pull"
+
+read -p "Press enter to continue"

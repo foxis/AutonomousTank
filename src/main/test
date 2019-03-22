@@ -1,0 +1,11 @@
+#!/bin/bash
+
+pyro4-nsc list
+
+/usr/sbin/arp -a
+
+ping ExtractorLeft -c 1
+
+ping ExtractorRight -c 1
+
+read -p "Press enter to continue"

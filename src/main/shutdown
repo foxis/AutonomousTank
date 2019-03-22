@@ -1,0 +1,5 @@
+#!/bin/bash
+
+ssh pi@ExtractorLeft sudo shutdown now
+ssh pi@ExtractorRight sudo shutdown now
+sudo shutdown now

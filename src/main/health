@@ -1,0 +1,15 @@
+#!/bin/bash
+
+function helper {
+	/home/pi/health.py > .health.log	
+	ssh pi@ExtractorLeft /home/pi/health.py >>.health.log
+	ssh pi@ExtractorRight /home/pi/health.py >>.health.log
+	clear
+	cat .health.log
+}
+
+while true
+do
+	helper
+	sleep 1
+done

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+ssh pi@ExtractorLeft sudo reboot
+ssh pi@ExtractorRight sudo reboot
+sudo reboot
