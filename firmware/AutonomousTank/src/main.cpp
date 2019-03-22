@@ -9,6 +9,7 @@
 #include "PID/PID.h"
 
 #define VERSION "1.0"
+#define SUPPORTS "motors,servos"
 
 #define PIN_SERVOS_ENABLE A2
 #define PIN_MOTORS_ENABLE A1
@@ -29,10 +30,11 @@
 
 // =======================================================
 Servo servo[4];
-CmdCallback_P<3> cmdCallback;
+CmdCallback_P<5> cmdCallback;
 CmdBuffer<128>  cmdBuffer;
 CmdParser      cmdParser;
 unsigned long last_now = 0;
+unsigned long pid_delta = 0;
 
 Locomotion::SoftwareFrequencyCounter encoder_a(100);
 Locomotion::SoftwareFrequencyCounter encoder_b(100);
@@ -50,9 +52,11 @@ Locomotion::PID pid_b(&pid_b_in, &pid_b_out, &pid_b_set, 0.0005, 0.0002, 0.00007
 void motors_enable(bool);
 void servos_enable(bool);
 
+void handle_hello(CmdParser *myParser);
 void handle_motors(CmdParser *myParser);
 void handle_servos(CmdParser *myParser);
 void handle_status(CmdParser *myParser);
+void handle_debug(CmdParser *myParser);
 void handle_encoder_a();
 void handle_encoder_b();
 void handle_motor_pid(unsigned long now);
@@ -60,8 +64,7 @@ void handle_motor_pid(unsigned long now);
 // =======================================================
 void setup() {
 	Serial.begin(115200);
-	Serial.print("Autonomous Robot Firmware Version ");
-	Serial.println(VERSION);
+	handle_hello(NULL);
 
 	Serial.println("Initializing pins...");
 	pinMode(PIN_SERVOS_ENABLE, OUTPUT);
@@ -92,12 +95,16 @@ void setup() {
 
 	Serial.println("Setting up cli...");
 	Serial.println("Commands:");
+	Serial.println("  HELLO");
+	cmdCallback.addCmd(PSTR("HELLO"), &handle_hello);
 	Serial.println("  MOTOR {enable: 0/1} {left speed: 0..1} {right speed: 0..1} -> OK/ERR");
 	cmdCallback.addCmd(PSTR("MOTOR"), &handle_motors);
 	Serial.println("  SERVO {enable: 0/1} {0: 0..180} {1} {2} {3} -> OK/ERR");
 	cmdCallback.addCmd(PSTR("SERVO"), &handle_servos);
 	Serial.println("  STATUS -> {left speed} {right speed} {distance 0} .. {distance N}");
 	cmdCallback.addCmd(PSTR("STATUS"), &handle_status);
+	Serial.println("  DEBUG -> {speed control values}");
+	cmdCallback.addCmd(PSTR("DEBUG"), &handle_debug);
 
 	Serial.println("Done");
 	Serial.println("");
@@ -109,19 +116,15 @@ void loop() {
 	unsigned long now = micros();
 
 	if (cmdBuffer.readFromSerial(&Serial, 10)) {
-    Serial.println("Line have readed:");
-    Serial.println(cmdBuffer.getStringFromBuffer());
 		if (cmdParser.parseCmd(&cmdBuffer) != CMDPARSER_ERROR) {
 			cmdCallback.processCmd(&cmdParser);
 		}
 		else {
-			Serial.println("ERR");
+			Serial.println("ERR Failed parsing arguments");
 		}
   }
 
 	handle_motor_pid(now);
-
-	//handle_status(NULL);
 
 	last_now = now;
 }
@@ -156,16 +159,7 @@ void handle_motor_pid(unsigned long now)
 	pid_a_acc = min(1, max(-1, pid_a_acc));
 	pid_b_acc = min(1, max(-1, pid_b_acc));
 	motors.setMotorsSpeed(pid_a_acc, pid_b_acc);
-
-	Serial.print(now - last_now); Serial.print(" ");
-	Serial.print(pid_a_set); Serial.print(" ");
-	Serial.print(pid_a_in); Serial.print(" ");
-	Serial.print(pid_a_acc); Serial.print(" ");
-	Serial.print(pid_b_set); Serial.print(" ");
-	Serial.print(pid_b_in); Serial.print(" ");
-	Serial.print(pid_b_acc); Serial.print(" ");
-	Serial.println("");
-
+	pid_delta = now - last_now;
 	last_now = now;
 }
 
@@ -175,6 +169,15 @@ void servos_enable(bool enable)
 }
 
 // ----------------------------------------------------------------
+void handle_hello(CmdParser *myParser)
+{
+	Serial.println("Autonomous Robot Controller");
+	Serial.print("Firmware Version: ");
+	Serial.println(VERSION);
+	Serial.print("Firmware supports: ");
+	Serial.println(SUPPORTS);
+	Serial.println("");
+}
 void handle_motors(CmdParser *myParser)
 {
 	bool enable = strcmp("1", myParser->getCmdParam(1)) == 0;
@@ -201,5 +204,17 @@ void handle_status(CmdParser *myParser)
 	float right = encoder_b.lastFrequency(now);
 	Serial.print(left); Serial.print(" ");
 	Serial.print(right); Serial.print(" ");
+	Serial.println("");
+}
+
+void handle_debug(CmdParser *myParser)
+{
+	Serial.print(pid_delta); Serial.print(" ");
+	Serial.print(pid_a_set); Serial.print(" ");
+	Serial.print(pid_a_in); Serial.print(" ");
+	Serial.print(pid_a_acc); Serial.print(" ");
+	Serial.print(pid_b_set); Serial.print(" ");
+	Serial.print(pid_b_in); Serial.print(" ");
+	Serial.print(pid_b_acc); Serial.print(" ");
 	Serial.println("");
 }
