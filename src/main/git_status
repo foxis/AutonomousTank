@@ -1,0 +1,14 @@
+#!/bin/bash
+
+EV=/home/pi/EasyVision/
+RB=/home/pi/AutonomousTank/
+
+echo "------------------------------ Main"
+cd $EV && git status && cd $RB && git status
+
+echo "------------------------------ Left"
+ssh pi@ExtractorLeft "cd $EV && git status && cd $RB && git status"
+echo "------------------------------ Right"
+ssh pi@ExtractorRight "cd $EV && git status && cd $RB && git status"
+
+read -p "Press enter to continue"
