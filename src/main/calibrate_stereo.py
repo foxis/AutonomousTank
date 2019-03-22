@@ -51,6 +51,7 @@ def main():
     if args.test:
         with open(args.file) as f:
             camera_model = StereoCamera.fromdict(json.load(f))
+            print("{} was loaded for evaluation".format(args.file))
 
     left = PyroCapture('ExtractorLeft', nameserver="192.168.1.100")
     right = PyroCapture('ExtractorRight', nameserver="192.168.1.100")
@@ -67,10 +68,13 @@ def main():
             cam = None
             while not cam:
                 cam = vision.calibrate()
-                cv2.waitKey(1)
+                if cv2.waitKey(1) == 27:
+                    print("Calibration was aborted")
+                    return
 
             with open(args.file, "w") as f:
                 f.write(json.dumps(cam.todict(), indent=4))
+                print("{} was written".format(args.file))
 
 
 if __name__ == "__main__":
