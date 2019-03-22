@@ -1,9 +1,11 @@
 #!/bin/bash
 
+HEALTH=/home/pi/AutonomousTank/src/node/health.py
+
 function helper {
-	/home/pi/health.py > .health.log	
-	ssh pi@ExtractorLeft /home/pi/health.py >>.health.log
-	ssh pi@ExtractorRight /home/pi/health.py >>.health.log
+	$HEALTH > .health.log
+	ssh pi@ExtractorLeft $HEALTH >>.health.log
+	ssh pi@ExtractorRight $HEALTH >>.health.log
 	clear
 	cat .health.log
 }

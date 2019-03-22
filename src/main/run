@@ -1,4 +1,6 @@
 #!/bin/bash
 
-ssh pi@ExtractorLeft /home/pi/run.sh&
-ssh pi@ExtractorRight /home/pi/run.sh&
+$HOME=/home/pi/AutonomousTank/src/node/
+
+ssh pi@ExtractorLeft $HOME/run.sh&
+ssh pi@ExtractorRight $HOME/run.sh&
