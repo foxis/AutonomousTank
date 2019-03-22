@@ -4,3 +4,5 @@ HR=/home/pi/AutonomousTank/src/node/
 
 ssh pi@ExtractorLeft $HR/run.sh&
 ssh pi@ExtractorRight $HR/run.sh&
+
+read -p "Press enter to continue"

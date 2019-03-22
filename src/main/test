@@ -8,4 +8,6 @@ ping ExtractorLeft -c 1
 
 ping ExtractorRight -c 1
 
+ifconfig eth0 | grep txqueue
+
 read -p "Press enter to continue"
