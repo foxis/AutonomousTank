@@ -1,0 +1,8 @@
+#!/bin/bash
+
+HR=/home/pi/AutonomousTank/src/node/
+
+ssh pi@ExtractorLeft $HR/run_calib.sh&
+ssh pi@ExtractorRight $HR/run_calib.sh&
+
+read -p "Press enter to continue"
