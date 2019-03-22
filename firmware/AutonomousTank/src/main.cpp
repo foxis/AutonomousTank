@@ -4,6 +4,10 @@
 #include <CmdCallback.hpp>
 #include <CmdParser.hpp>
 
+#include "effectors/HBridge_TB724.h"
+#include "sensors/SWFrequencyCounter.h"
+#include "PID/PID.h"
+
 #define VERSION "1.0"
 
 #define PIN_SERVOS_ENABLE A2
@@ -25,18 +29,33 @@
 
 // =======================================================
 Servo servo[4];
-CmdCallback<3> cmdCallback;
-CmdBuffer<32>  cmdBuffer;
+CmdCallback_P<3> cmdCallback;
+CmdBuffer<128>  cmdBuffer;
 CmdParser      cmdParser;
 unsigned long last_now = 0;
+
+Locomotion::SoftwareFrequencyCounter encoder_a(100);
+Locomotion::SoftwareFrequencyCounter encoder_b(100);
+Locomotion::HBridge_TB724 motors(PIN_MA_A, PIN_MA_B, PIN_MA_PWM,
+						            				 PIN_MB_A, PIN_MB_B, PIN_MB_PWM,
+										 					 	 PIN_MOTORS_ENABLE, 255);
+
+Locomotion::real_t pid_a_in, pid_a_out, pid_a_set, pid_a_acc = 0;
+Locomotion::real_t pid_b_in, pid_b_out, pid_b_set, pid_b_acc = 0;
+Locomotion::PID pid_a(&pid_a_in, &pid_a_out, &pid_a_set, 0.0005, 0.0002, 0.00007, DIRECT);
+Locomotion::PID pid_b(&pid_b_in, &pid_b_out, &pid_b_set, 0.0005, 0.0002, 0.00007, DIRECT);
+
 
 // =======================================================
 void motors_enable(bool);
 void servos_enable(bool);
 
-void handle_motor(CmdParser *myParser);
-void handle_servo(CmdParser *myParser);
+void handle_motors(CmdParser *myParser);
+void handle_servos(CmdParser *myParser);
 void handle_status(CmdParser *myParser);
+void handle_encoder_a();
+void handle_encoder_b();
+void handle_motor_pid(unsigned long now);
 
 // =======================================================
 void setup() {
@@ -46,25 +65,27 @@ void setup() {
 
 	Serial.println("Initializing pins...");
 	pinMode(PIN_SERVOS_ENABLE, OUTPUT);
-	pinMode(PIN_MOTORS_ENABLE, OUTPUT);
-	motors_enable(false);
 	servos_enable(false);
 
-	pinMode(PIN_MA_PWM, OUTPUT);
-	pinMode(PIN_MB_PWM, OUTPUT);
-
-	pinMode(PIN_MA_A, OUTPUT);
-	pinMode(PIN_MA_B, OUTPUT);
-	pinMode(PIN_MB_A, OUTPUT);
-	pinMode(PIN_MB_B, OUTPUT);
+	motors.begin();
 
 	servo[0].attach(PIN_SERVO_0);
 	servo[1].attach(PIN_SERVO_1);
 	servo[2].attach(PIN_SERVO_2);
 	servo[3].attach(PIN_SERVO_3);
 
+	Serial.println("Setting up speed controllers...");
+	pid_a.SetOutputLimits(-1.0, 1.0);
+	pid_a.SetSampleTime(10000);
+	pid_a.SetMode(AUTOMATIC);
+	pid_b.SetOutputLimits(-1.0, 1.0);
+	pid_b.SetSampleTime(10000);
+	pid_b.SetMode(AUTOMATIC);
+
 	Serial.println("Setting up encoder...");
-	// TODO
+	attachInterrupt(0, handle_encoder_a, RISING);
+  attachInterrupt(1, handle_encoder_b, RISING);
+		// TODO
 
 	Serial.println("Setting up lidar...");
   //TODO
@@ -72,11 +93,11 @@ void setup() {
 	Serial.println("Setting up cli...");
 	Serial.println("Commands:");
 	Serial.println("  MOTOR {enable: 0/1} {left speed: 0..1} {right speed: 0..1} -> OK/ERR");
-	cmdBuffer.add(PSTR("MOTOR"), &handle_motors);
+	cmdCallback.addCmd(PSTR("MOTOR"), &handle_motors);
 	Serial.println("  SERVO {enable: 0/1} {0: 0..180} {1} {2} {3} -> OK/ERR");
-	cmdBuffer.add(PSTR("SERVO"), &handle_servos);
+	cmdCallback.addCmd(PSTR("SERVO"), &handle_servos);
 	Serial.println("  STATUS -> {left speed} {right speed} {distance 0} .. {distance N}");
-	cmdBuffer.add(PSTR("STATUS"), &handle_status);
+	cmdCallback.addCmd(PSTR("STATUS"), &handle_status);
 
 	Serial.println("Done");
 	Serial.println("");
@@ -85,12 +106,12 @@ void setup() {
 }
 
 void loop() {
-	unsigned long ms = micros();
+	unsigned long now = micros();
 
 	if (cmdBuffer.readFromSerial(&Serial, 10)) {
     Serial.println("Line have readed:");
     Serial.println(cmdBuffer.getStringFromBuffer());
-		if (cmdParser.parseCmd(&myBuffer) != CMDPARSER_ERROR) {
+		if (cmdParser.parseCmd(&cmdBuffer) != CMDPARSER_ERROR) {
 			cmdCallback.processCmd(&cmdParser);
 		}
 		else {
@@ -100,23 +121,52 @@ void loop() {
 
 	handle_motor_pid(now);
 
+	//handle_status(NULL);
+
 	last_now = now;
 }
 
 // =================================================================
-void motors_enable(bool enable)
+void handle_encoder_a()
 {
-		digitalWrite(PIN_MOTORS_ENABLE, enable);
+	encoder_a.count(micros());
 }
-
-void motors_set(float left, float right)
+void handle_encoder_b()
 {
-
+	encoder_b.count(micros());
 }
 
 void handle_motor_pid(unsigned long now)
 {
+	static unsigned long last_now;
+	encoder_a.update(now);
+	encoder_b.update(now);
 
+	pid_a_in = encoder_a.lastFrequency(now);
+	pid_b_in = encoder_b.lastFrequency(now);
+	if (pid_a_acc < 0)
+		pid_a_in *= -1;
+	if (pid_b_acc < 0)
+		pid_b_in *= -1;
+
+	pid_a.Compute(now);
+	pid_b.Compute(now);
+	pid_a_acc += pid_a_out;
+	pid_b_acc += pid_b_out;
+	pid_a_acc = min(1, max(-1, pid_a_acc));
+	pid_b_acc = min(1, max(-1, pid_b_acc));
+	motors.setMotorsSpeed(pid_a_acc, pid_b_acc);
+
+	Serial.print(now - last_now); Serial.print(" ");
+	Serial.print(pid_a_set); Serial.print(" ");
+	Serial.print(pid_a_in); Serial.print(" ");
+	Serial.print(pid_a_acc); Serial.print(" ");
+	Serial.print(pid_b_set); Serial.print(" ");
+	Serial.print(pid_b_in); Serial.print(" ");
+	Serial.print(pid_b_acc); Serial.print(" ");
+	Serial.println("");
+
+	last_now = now;
 }
 
 void servos_enable(bool enable)
@@ -125,20 +175,31 @@ void servos_enable(bool enable)
 }
 
 // ----------------------------------------------------------------
-void handle_motor(CmdParser *myParser)
+void handle_motors(CmdParser *myParser)
 {
-	Serial.println("Motor");
 	bool enable = strcmp("1", myParser->getCmdParam(1)) == 0;
-	float left = float(myParser->getCmdParam(2));
-	float right = float(myParser->getCmdParam(3));
+	pid_a_set = atof(myParser->getCmdParam(2));
+	pid_b_set = atof(myParser->getCmdParam(3));
+	motors.enable(enable);
+	Serial.println("OK");
+}
+void handle_servos(CmdParser *myParser)
+{
+	bool enable = strcmp("1", myParser->getCmdParam(1)) == 0;
+
+	servos_enable(enable);
+	for (int i = 0; i < 4; i ++) {
+		servo[i].write(atoi(myParser->getCmdParam(2 + i)));
+	}
 
 	Serial.println("OK");
 }
-void handle_servo(CmdParser *myParser)
-{
-	Serial.println("Servo");
-}
 void handle_status(CmdParser *myParser)
 {
-	Serial.println("Status");
+	unsigned long now = micros();
+	float left = encoder_a.lastFrequency(now);
+	float right = encoder_b.lastFrequency(now);
+	Serial.print(left); Serial.print(" ");
+	Serial.print(right); Serial.print(" ");
+	Serial.println("");
 }
