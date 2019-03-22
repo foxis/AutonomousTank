@@ -3,3 +3,4 @@
 ssh pi@ExtractorLeft killall python3
 ssh pi@ExtractorRight killall python3
 
+read -p "Press enter to continue"
