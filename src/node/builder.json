@@ -8,6 +8,12 @@
         },
         {
             "args": [],
+            "class": "MultiThreading",
+            "objects": {},
+            "kwargs": {}
+        },
+        {
+            "args": [],
             "class": "CalibratedCamera",
             "objects": {},
             "kwargs": {"camera": null}
