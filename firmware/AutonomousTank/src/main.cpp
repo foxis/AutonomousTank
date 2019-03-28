@@ -28,6 +28,8 @@
 #define PIN_SERVO_2 12
 #define PIN_SERVO_3 13
 
+#define LOOP_DELTA 100
+
 // =======================================================
 Servo servo[4];
 CmdCallback_P<5> cmdCallback;
@@ -35,17 +37,21 @@ CmdBuffer<128>  cmdBuffer;
 CmdParser      cmdParser;
 unsigned long last_now = 0;
 unsigned long pid_delta = 0;
+long last_ticks_a = 0;
+long last_ticks_b = 0;
+long max_ticks_a = 0;
+long max_ticks_b = 0;
 
-Locomotion::SoftwareFrequencyCounter encoder_a(100);
-Locomotion::SoftwareFrequencyCounter encoder_b(100);
+Locomotion::SoftwareFrequencyCounter<long> encoder_a(true);
+Locomotion::SoftwareFrequencyCounter<long> encoder_b(true);
 Locomotion::HBridge_TB724 motors(PIN_MA_A, PIN_MA_B, PIN_MA_PWM,
 						            				 PIN_MB_A, PIN_MB_B, PIN_MB_PWM,
 										 					 	 PIN_MOTORS_ENABLE, 255);
 
 Locomotion::real_t pid_a_in, pid_a_out, pid_a_set, pid_a_acc = 0;
 Locomotion::real_t pid_b_in, pid_b_out, pid_b_set, pid_b_acc = 0;
-Locomotion::PID pid_a(&pid_a_in, &pid_a_out, &pid_a_set, 0.0005, 0.0002, 0.00007, DIRECT);
-Locomotion::PID pid_b(&pid_b_in, &pid_b_out, &pid_b_set, 0.0005, 0.0002, 0.00007, DIRECT);
+Locomotion::PID pid_a(&pid_a_in, &pid_a_out, &pid_a_set, 0.0008, 0.0004, 0.00000, DIRECT);
+Locomotion::PID pid_b(&pid_b_in, &pid_b_out, &pid_b_set, 0.0008, 0.0004, 0.00000, DIRECT);
 
 
 // =======================================================
@@ -79,10 +85,10 @@ void setup() {
 
 	Serial.println("Setting up speed controllers...");
 	pid_a.SetOutputLimits(-1.0, 1.0);
-	pid_a.SetSampleTime(10000);
+	pid_a.SetSampleTime(LOOP_DELTA * 1000L);
 	pid_a.SetMode(AUTOMATIC);
 	pid_b.SetOutputLimits(-1.0, 1.0);
-	pid_b.SetSampleTime(10000);
+	pid_b.SetSampleTime(LOOP_DELTA * 1000L);
 	pid_b.SetMode(AUTOMATIC);
 
 	Serial.println("Setting up encoder...");
@@ -91,17 +97,19 @@ void setup() {
 		// TODO
 
 	Serial.println("Setting up lidar...");
-  //TODO
 
+	// TODO: Add these commands:
+	// DIFF {forward speed} {angular speed} {max tics}
+	// OBSTACLE {0/1 for off/on} # default 1
 	Serial.println("Setting up cli...");
 	Serial.println("Commands:");
 	Serial.println("  HELLO");
 	cmdCallback.addCmd(PSTR("HELLO"), &handle_hello);
-	Serial.println("  MOTOR {enable: 0/1} {left speed: 0..1} {right speed: 0..1} -> OK/ERR");
+	Serial.println("  MOTOR {enable: 0/1} {left speed: 0..1} {right speed: 0..1} {max N tics left} {max N ticks right}-> OK/ERR");
 	cmdCallback.addCmd(PSTR("MOTOR"), &handle_motors);
 	Serial.println("  SERVO {enable: 0/1} {0: 0..180} {1} {2} {3} -> OK/ERR");
 	cmdCallback.addCmd(PSTR("SERVO"), &handle_servos);
-	Serial.println("  STATUS -> {left speed} {right speed} {distance 0} .. {distance N}");
+	Serial.println("  STATUS -> {left speed} {right speed} {left N ticks} {right N ticks} {distance 0} .. {distance N}");
 	cmdCallback.addCmd(PSTR("STATUS"), &handle_status);
 	Serial.println("  DEBUG -> {speed control values}");
 	cmdCallback.addCmd(PSTR("DEBUG"), &handle_debug);
@@ -114,8 +122,12 @@ void setup() {
 
 void loop() {
 	unsigned long now = micros();
+	encoder_a.update(now);
+	encoder_b.update(now);
 
-	if (cmdBuffer.readFromSerial(&Serial, 10)) {
+	handle_motor_pid(now);
+
+	if (cmdBuffer.readFromSerial(&Serial, LOOP_DELTA - 1)) {
 		if (cmdParser.parseCmd(&cmdBuffer) != CMDPARSER_ERROR) {
 			cmdCallback.processCmd(&cmdParser);
 		}
@@ -124,43 +136,54 @@ void loop() {
 		}
   }
 
-	handle_motor_pid(now);
+	unsigned long tmp = micros();
+	if (tmp - now < LOOP_DELTA * 1000L) {
+		delayMicroseconds(LOOP_DELTA * 1000L - (tmp - now));
+	}
 
+//handle_debug(NULL);
 	last_now = now;
 }
 
 // =================================================================
 void handle_encoder_a()
 {
-	encoder_a.count(micros());
+	// TODO after fixing hall sensor chip, use this for direction.
+	//register byte p = (~PINC) & _BV(0);
+	register byte p = 0;
+	encoder_a.count(1 - p * 2);
 }
 void handle_encoder_b()
 {
-	encoder_b.count(micros());
+	register byte p = ((~PINC) & _BV(3)) >> 3;  // 1 -> -1; 0 -> +1
+	encoder_b.count(1 - p * 2);
 }
 
 void handle_motor_pid(unsigned long now)
 {
-	static unsigned long last_now;
-	encoder_a.update(now);
-	encoder_b.update(now);
+	long ticks_a;
+	long ticks_b;
 
-	pid_a_in = encoder_a.lastFrequency(now);
-	pid_b_in = encoder_b.lastFrequency(now);
+	pid_a_in = encoder_a.lastFrequency();
+	pid_b_in = encoder_b.lastFrequency();
+
+	ticks_a = encoder_a.lastCounter();
+	ticks_b = encoder_b.lastCounter();
+
+	// FIXME: this will be unneccessary once we use direction info from encoder
 	if (pid_a_acc < 0)
 		pid_a_in *= -1;
-	if (pid_b_acc < 0)
-		pid_b_in *= -1;
+
+	// TODO: Handle max_ticks
 
 	pid_a.Compute(now);
 	pid_b.Compute(now);
 	pid_a_acc += pid_a_out;
 	pid_b_acc += pid_b_out;
-	pid_a_acc = min(1, max(-1, pid_a_acc));
-	pid_b_acc = min(1, max(-1, pid_b_acc));
+	pid_a_acc = min(1.0, max(-1.0, pid_a_acc));
+	pid_b_acc = min(1.0, max(-1.0, pid_b_acc));
 	motors.setMotorsSpeed(pid_a_acc, pid_b_acc);
 	pid_delta = now - last_now;
-	last_now = now;
 }
 
 void servos_enable(bool enable)
@@ -183,6 +206,10 @@ void handle_motors(CmdParser *myParser)
 	bool enable = strcmp("1", myParser->getCmdParam(1)) == 0;
 	pid_a_set = atof(myParser->getCmdParam(2));
 	pid_b_set = atof(myParser->getCmdParam(3));
+	max_ticks_a = atof(myParser->getCmdParam(4));
+	max_ticks_b = atof(myParser->getCmdParam(5));
+	last_ticks_a = encoder_a.lastCounter();
+	last_ticks_b = encoder_b.lastCounter();
 	motors.enable(enable);
 	Serial.println("OK");
 }
@@ -199,11 +226,14 @@ void handle_servos(CmdParser *myParser)
 }
 void handle_status(CmdParser *myParser)
 {
-	unsigned long now = micros();
-	float left = encoder_a.lastFrequency(now);
-	float right = encoder_b.lastFrequency(now);
-	Serial.print(left); Serial.print(" ");
-	Serial.print(right); Serial.print(" ");
+	float f_a = encoder_a.lastFrequency();
+	float f_b = encoder_b.lastFrequency();
+	long cnt_a = encoder_a.lastCounter();
+	long cnt_b = encoder_b.lastCounter();
+	Serial.print(f_a); Serial.print(" ");
+	Serial.print(f_b); Serial.print(" ");
+	Serial.print(cnt_a); Serial.print(" ");
+	Serial.print(cnt_b); Serial.print(" ");
 	Serial.println("");
 }
 
