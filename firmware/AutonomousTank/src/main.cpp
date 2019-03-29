@@ -7,6 +7,7 @@
 #include "effectors/HBridge_TB724.h"
 #include "sensors/SWFrequencyCounter.h"
 #include "PID/PID.h"
+#include "sensors/TCA9548A_VL53L0X_array.h"
 
 #define VERSION "1.0"
 #define SUPPORTS "motors,servos"
@@ -42,6 +43,24 @@ long last_ticks_b = 0;
 long max_ticks_a = 0;
 long max_ticks_b = 0;
 
+#define LIDAR_NUM_SENSORS 7
+#define LIDAR_YAW(index) ((index - 3) * 3.14156 / LIDAR_NUM_SENSORS)
+Locomotion::RangeSensorBase::Reading_t lidar_readings[LIDAR_NUM_SENSORS] = {
+	{0, LIDAR_YAW(0), 0},
+	{0, LIDAR_YAW(1), 0},
+	{0, LIDAR_YAW(2), 0},
+	{0, LIDAR_YAW(3), 0},
+	{0, LIDAR_YAW(4), 0},
+	{0, LIDAR_YAW(5), 0},
+	{0, LIDAR_YAW(6), 0},
+};
+Locomotion::RangeSensorBase::Measurement_t lidar_measurement = {
+	false,
+	0,
+	lidar_readings,
+	LIDAR_NUM_SENSORS
+};
+
 Locomotion::SoftwareFrequencyCounter<long> encoder_a(true);
 Locomotion::SoftwareFrequencyCounter<long> encoder_b(true);
 Locomotion::HBridge_TB724 motors(PIN_MA_A, PIN_MA_B, PIN_MA_PWM,
@@ -53,6 +72,17 @@ Locomotion::real_t pid_b_in, pid_b_out, pid_b_set, pid_b_acc = 0;
 Locomotion::PID pid_a(&pid_a_in, &pid_a_out, &pid_a_set, 0.0008, 0.0004, 0.00000, DIRECT);
 Locomotion::PID pid_b(&pid_b_in, &pid_b_out, &pid_b_set, 0.0008, 0.0004, 0.00000, DIRECT);
 
+Locomotion::TCA9548A lidar_mux(&Wire);
+Locomotion::VL53L0X lidar_sensors[LIDAR_NUM_SENSORS] = {
+	Locomotion::VL53L0X(&Wire),
+	Locomotion::VL53L0X(&Wire),
+	Locomotion::VL53L0X(&Wire),
+	Locomotion::VL53L0X(&Wire),
+	Locomotion::VL53L0X(&Wire),
+	Locomotion::VL53L0X(&Wire),
+	Locomotion::VL53L0X(&Wire),
+};
+Locomotion::TCA9548A_VL53L0X_Array lidar(&lidar_mux, 1, lidar_sensors, LIDAR_NUM_SENSORS);
 
 // =======================================================
 void motors_enable(bool);
@@ -72,7 +102,7 @@ void setup() {
 	Serial.begin(115200);
 	handle_hello(NULL);
 
-	Serial.println("Initializing pins...");
+	Serial.print("Initializing pins...");
 	pinMode(PIN_SERVOS_ENABLE, OUTPUT);
 	servos_enable(false);
 
@@ -82,8 +112,9 @@ void setup() {
 	servo[1].attach(PIN_SERVO_1);
 	servo[2].attach(PIN_SERVO_2);
 	servo[3].attach(PIN_SERVO_3);
+	Serial.println("OK");
 
-	Serial.println("Setting up speed controllers...");
+	Serial.print("Setting up speed controllers...");
 	pid_a.SetOutputLimits(-1.0, 1.0);
 	pid_a.SetSampleTime(LOOP_DELTA * 1000L);
 	pid_a.SetMode(AUTOMATIC);
@@ -91,12 +122,21 @@ void setup() {
 	pid_b.SetSampleTime(LOOP_DELTA * 1000L);
 	pid_b.SetMode(AUTOMATIC);
 
-	Serial.println("Setting up encoder...");
+	Serial.println("OK");
+
+	Serial.print("Setting up encoder...");
 	attachInterrupt(0, handle_encoder_a, RISING);
   attachInterrupt(1, handle_encoder_b, RISING);
-		// TODO
+	Serial.println("OK");
 
-	Serial.println("Setting up lidar...");
+	Serial.print("Setting up lidar...");
+	lidar.setIOTimeout(50000);
+	lidar.begin(false);
+	Wire.begin();
+	if (lidar.reset())
+		Serial.println("OK");
+	else
+		Serial.println("ERROR");
 
 	// TODO: Add these commands:
 	// DIFF {forward speed} {angular speed} {max tics}
@@ -124,10 +164,12 @@ void loop() {
 	unsigned long now = micros();
 	encoder_a.update(now);
 	encoder_b.update(now);
-
 	handle_motor_pid(now);
 
-	if (cmdBuffer.readFromSerial(&Serial, LOOP_DELTA - 1)) {
+	lidar.startSingleSampling();
+	lidar.readMeasurement(&lidar_measurement, LIDAR_NUM_SENSORS, 0);
+
+	if (cmdBuffer.readFromSerial(&Serial, LOOP_DELTA - 1 - 33)) {
 		if (cmdParser.parseCmd(&cmdBuffer) != CMDPARSER_ERROR) {
 			cmdCallback.processCmd(&cmdParser);
 		}
