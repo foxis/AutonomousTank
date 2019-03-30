@@ -135,11 +135,8 @@ void setup() {
 
 	Serial.print(_PSTR("Setting up lidar... "));
 	lidar.setIOTimeout(50000);
-	Serial.print(_PSTR("T"));
 	lidar.begin(false);
-	Serial.print(_PSTR("L"));
 	Wire.begin();
-	Serial.print(_PSTR("W"));
 
 	bool test_results[1 + LIDAR_NUM_SENSORS] = {false,};
 	lidar.test(test_results);
