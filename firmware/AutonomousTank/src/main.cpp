@@ -28,13 +28,14 @@
 #define PIN_SERVO_1 11
 #define PIN_SERVO_2 12
 #define PIN_SERVO_3 13
+#define NUM_SERVOS 2
 
 #define LOOP_DELTA 100
 
 #define _PSTR(str) ((const __FlashStringHelper *)PSTR(str))
 
 // =======================================================
-Servo servo[4];
+Servo servo[NUM_SERVOS];
 CmdCallback_P<6> cmdCallback;
 CmdBuffer<128>  cmdBuffer;
 CmdParser      cmdParser;
@@ -46,7 +47,7 @@ long max_ticks_a = 0;
 long max_ticks_b = 0;
 bool test_result = true;
 
-#define LIDAR_NUM_SENSORS 7
+#define LIDAR_NUM_SENSORS 8
 #define LIDAR_YAW(index) ((index - 3) * 3.14156 / LIDAR_NUM_SENSORS)
 Locomotion::RangeSensorBase::Reading_t lidar_readings[LIDAR_NUM_SENSORS] = {
 	{0, LIDAR_YAW(0), 0},
@@ -56,6 +57,7 @@ Locomotion::RangeSensorBase::Reading_t lidar_readings[LIDAR_NUM_SENSORS] = {
 	{0, LIDAR_YAW(4), 0},
 	{0, LIDAR_YAW(5), 0},
 	{0, LIDAR_YAW(6), 0},
+	{0, -3.14156, 0},	// back facing lidar
 };
 Locomotion::RangeSensorBase::Measurement_t lidar_measurement = {
 	false,
@@ -77,6 +79,7 @@ Locomotion::PID pid_b(&pid_b_in, &pid_b_out, &pid_b_set, 0.0008, 0.0004, 0.00000
 
 Locomotion::TCA9548A lidar_mux(&Wire);
 Locomotion::VL53L0X lidar_sensors[LIDAR_NUM_SENSORS] = {
+	Locomotion::VL53L0X(&Wire),
 	Locomotion::VL53L0X(&Wire),
 	Locomotion::VL53L0X(&Wire),
 	Locomotion::VL53L0X(&Wire),
@@ -114,8 +117,8 @@ void setup() {
 
 	servo[0].attach(PIN_SERVO_0);
 	servo[1].attach(PIN_SERVO_1);
-	servo[2].attach(PIN_SERVO_2);
-	servo[3].attach(PIN_SERVO_3);
+	//servo[2].attach(PIN_SERVO_2);
+	//servo[3].attach(PIN_SERVO_3);
 	Serial.println(_PSTR("OK"));
 
 	Serial.print(_PSTR("Setting up speed controllers..."));
@@ -134,9 +137,9 @@ void setup() {
 	Serial.println(_PSTR("OK"));
 
 	Serial.print(_PSTR("Setting up lidar... "));
-	lidar.setIOTimeout(50000);
 	lidar.begin(false);
 	Wire.begin();
+//	lidar.setIOTimeout(50000);
 
 	bool test_results[1 + LIDAR_NUM_SENSORS] = {false,};
 	lidar.test(test_results);
@@ -186,11 +189,12 @@ void loop() {
 	encoder_b.update(now);
 	handle_motor_pid(now);
 
-	lidar.startSingleSampling();
-	if (test_result)
+	if (test_result) {
+		lidar.startSingleSampling();
 		lidar.readMeasurement(&lidar_measurement, LIDAR_NUM_SENSORS, 0);
+	}
 
-	if (cmdBuffer.readFromSerial(&Serial, LOOP_DELTA - 1 - 33)) {
+	if (cmdBuffer.readFromSerial(&Serial, LOOP_DELTA - 1 - 57)) {
 		if (cmdParser.parseCmd(&cmdBuffer) != CMDPARSER_ERROR) {
 			cmdCallback.processCmd(&cmdParser);
 		}
@@ -281,7 +285,7 @@ void handle_servos(CmdParser *myParser)
 	bool enable = strcmp("1", myParser->getCmdParam(1)) == 0;
 
 	servos_enable(enable);
-	for (int i = 0; i < 4; i ++) {
+	for (int i = 0; i < NUM_SERVOS; i ++) {
 		servo[i].write(atoi(myParser->getCmdParam(2 + i)));
 	}
 
