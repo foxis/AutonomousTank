@@ -1,8 +1,15 @@
 #!/bin/bash
 
 HR=/home/pi/AutonomousTank/src/node/
+MYSELF=`hostname -I`
 
 ssh pi@ExtractorLeft $HR/run.sh&
 ssh pi@ExtractorRight $HR/run.sh&
+
+python3 -m robot.HAL HAL /dev/ttyUSB2 -H $MYSELF
+python3 -m EasyVision.bin.synchronizer SYNC -N 2 -H $MYSELF
+python3 -m robot.MAP MAP -H $MYSELF
+python3 -m robot.VO VO -H $MYSELF
+
 
 read -p "Press enter to continue"
