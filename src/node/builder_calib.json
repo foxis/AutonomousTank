@@ -1,7 +1,7 @@
 {
     "args": [
         {
-            "args": [0],
+            "args": [6],
             "class": "VideoCapture",
             "objects": {},
             "kwargs": {"width":  640, "height":  480}
