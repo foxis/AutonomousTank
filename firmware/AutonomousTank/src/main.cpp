@@ -255,7 +255,7 @@ void handle_motor_pid(unsigned long now)
 
 void servos_enable(bool enable)
 {
-	digitalWrite(PIN_SERVOS_ENABLE, enable);
+	digitalWrite(PIN_SERVOS_ENABLE, !enable);
 }
 
 // ----------------------------------------------------------------
