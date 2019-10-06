@@ -1,0 +1,53 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+vagrantfile_path = File.dirname(__FILE__)
+
+# Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  # All Vagrant configuration is done here. The most common configuration
+  # options are documented and commented below. For a complete reference,
+  # please see the online documentation at vagrantup.com.
+
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 1024
+    v.cpus = 4
+  end
+
+  config.ssh.forward_agent = true
+
+  public_key = ENV['HOME'] + '/.ssh/id_rsa.pub'
+
+  config.vm.define "main", primary: true do |main|
+    main.vm.box = "ubuntu/xenial64"
+
+    main.disksize.size = '8GB'
+
+    main.vm.network "private_network", ip: "192.168.2.100"
+
+    main.vm.synced_folder "../", "/home/vagrant/code"
+
+    main.vm.provision 'ansible' do |ansible|
+      ansible.compatibility_mode = '2.0'
+      ansible.playbook = vagrantfile_path + '/ansible/main_provision_vagrant.yml'
+      ansible.become = true
+      ansible.inventory_path = vagrantfile_path + '/ansible/inventory/vagrant'
+    end
+  end
+
+  config.vm.define "node", autostart: false do |node|
+    node.vm.box = "ubuntu/xenial64"
+    node.vm.network "private_network", ip: "192.168.2.101"
+
+    node.vm.network :forwarded_port, guest: 443, host: 1443, disabled: true
+
+    node.vm.provision "ansible" do |ansible|
+      ansible.compatibility_mode = "2.0"
+      ansible.playbook = vagrantfile_path + '/ansible/node_provision_vagrant.yml'
+      ansible.inventory_path = vagrantfile_path + '/ansible/inventory/vagrant'
+    end
+  end
+
+end
