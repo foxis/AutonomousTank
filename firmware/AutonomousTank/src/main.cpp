@@ -215,9 +215,7 @@ void loop() {
 // =================================================================
 void handle_encoder_a()
 {
-	// TODO after fixing hall sensor chip, use this for direction.
-	//register byte p = (~PINC) & _BV(0);
-	register byte p = 0;
+	register byte p = (PINC) & _BV(0);
 	encoder_a.count(1 - p * 2);
 }
 void handle_encoder_b()
@@ -236,10 +234,6 @@ void handle_motor_pid(unsigned long now)
 
 	ticks_a = encoder_a.lastCounter();
 	ticks_b = encoder_b.lastCounter();
-
-	// FIXME: this will be unneccessary once we use direction info from encoder
-	if (pid_a_acc < 0)
-		pid_a_in *= -1;
 
 	// TODO: Handle max_ticks
 
